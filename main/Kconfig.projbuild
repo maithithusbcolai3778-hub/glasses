@@ -1,0 +1,339 @@
+menu "Example Configuration"
+
+    config ESP_WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+            SSID (network name) for the example to connect to.
+
+    config ESP_WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+            WiFi password (WPA or WPA2) for the example to use.
+
+    choice ESP_WIFI_SAE_MODE
+        prompt "WPA3 SAE mode selection"
+        default ESP_WPA3_SAE_PWE_BOTH
+        help
+            Select mode for SAE as Hunt and Peck, H2E or both.
+        config ESP_WPA3_SAE_PWE_HUNT_AND_PECK
+            bool "HUNT AND PECK"
+        config ESP_WPA3_SAE_PWE_HASH_TO_ELEMENT
+            bool "H2E"
+        config ESP_WPA3_SAE_PWE_BOTH
+            bool "BOTH"
+    endchoice
+
+    config ESP_WIFI_PW_ID
+        string "PASSWORD IDENTIFIER"
+        depends on  ESP_WPA3_SAE_PWE_HASH_TO_ELEMENT|| ESP_WPA3_SAE_PWE_BOTH
+        default ""
+        help
+            password identifier for SAE H2E
+
+    config ESP_MAXIMUM_RETRY
+        int "Maximum retry"
+        default 5
+        help
+            Set the Maximum retry to avoid station reconnecting to the AP unlimited when the AP is really inexistent.
+
+    choice ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD
+        prompt "WiFi Scan auth mode threshold"
+        default ESP_WIFI_AUTH_WPA2_PSK
+        help
+            The weakest authmode to accept in the scan mode.
+            This value defaults to ESP_WIFI_AUTH_WPA2_PSK incase password is present and ESP_WIFI_AUTH_OPEN is used.
+            Please select ESP_WIFI_AUTH_WEP/ESP_WIFI_AUTH_WPA_PSK incase AP is operating in WEP/WPA mode.
+
+        config ESP_WIFI_AUTH_OPEN
+            bool "OPEN"
+        config ESP_WIFI_AUTH_WEP
+            bool "WEP"
+        config ESP_WIFI_AUTH_WPA_PSK
+            bool "WPA PSK"
+        config ESP_WIFI_AUTH_WPA2_PSK
+            bool "WPA2 PSK"
+        config ESP_WIFI_AUTH_WPA_WPA2_PSK
+            bool "WPA/WPA2 PSK"
+        config ESP_WIFI_AUTH_WPA3_PSK
+            bool "WPA3 PSK"
+        config ESP_WIFI_AUTH_WPA2_WPA3_PSK
+            bool "WPA2/WPA3 PSK"
+        config ESP_WIFI_AUTH_WAPI_PSK
+            bool "WAPI PSK"
+    endchoice
+
+endmenu
+menu "Audio Speaker (ES8311)"
+
+    config AUDIO_SPEAKER_ENABLE
+        bool "Enable audio speaker"
+        default n
+        help
+            Enable the onboard ES8311 + NS4150B speaker driver.
+
+    config AUDIO_SPEAKER_I2S_BCLK_GPIO
+        int "I2S BCLK GPIO"
+        default 12
+        range 0 54
+
+    config AUDIO_SPEAKER_I2S_WS_GPIO
+        int "I2S WS/LRCK GPIO"
+        default 10
+        range 0 54
+
+    config AUDIO_SPEAKER_I2S_DOUT_GPIO
+        int "I2S DOUT GPIO"
+        default 9
+        range 0 54
+
+    config AUDIO_SPEAKER_I2S_MCLK_GPIO
+        int "I2S MCLK GPIO"
+        default 13
+        range 0 54
+
+    config AUDIO_SPEAKER_I2C_SDA_GPIO
+        int "I2C SDA GPIO"
+        default 7
+        range 0 54
+
+    config AUDIO_SPEAKER_I2C_SCL_GPIO
+        int "I2C SCL GPIO"
+        default 8
+        range 0 54
+
+    config AUDIO_SPEAKER_I2C_PORT
+        int "I2C port number"
+        default 0
+        range 0 1
+
+    config AUDIO_SPEAKER_PA_CTRL_GPIO
+        int "PA enable GPIO"
+        default 53
+        range 0 54
+
+    config AUDIO_SPEAKER_SAMPLE_RATE
+        int "Sample rate (Hz)"
+        default 16000
+        range 8000 48000
+
+    config AUDIO_SPEAKER_MCLK_MULTIPLE
+        int "MCLK multiple"
+        default 384
+        range 128 1024
+
+    config AUDIO_SPEAKER_DEFAULT_VOLUME
+        int "Default volume (0-100)"
+        default 60
+        range 0 100
+
+    config AUDIO_SPEAKER_BEEP_DURATION_MS
+        int "Beep test duration (ms)"
+        default 500
+        range 100 3000
+
+endmenu
+menu "OV5647 Camera"
+
+    menu "OV5647 MIPI-CSI camera"
+
+        config CAM_H_RES
+            int "Video output width"
+            default 800
+
+        config CAM_V_RES
+            int "Video output height"
+            default 800
+
+        config CAM_SRC_H_RES
+            int "Sensor source width (sensor mode)"
+            default 1280
+            help
+                Request this sensor source resolution. The final JPEG output
+                is cropped/scaled from this source in software.
+
+        config CAM_SRC_V_RES
+            int "Sensor source height (sensor mode)"
+            default 960
+            help
+                Request this sensor source resolution. The final JPEG output
+                is cropped/scaled from this source in software.
+
+        choice CAM_CROP_ANCHOR
+            prompt "Vertical crop anchor (for guide glasses FOV)"
+            default CAM_CROP_ANCHOR_CENTER
+            help
+                When the sensor source is taller than the output, choose which
+                vertical region to keep. Center/top keeps more distant scene;
+                bottom keeps more ground.
+
+            config CAM_CROP_ANCHOR_BOTTOM
+                bool "Bottom (more ground)"
+
+            config CAM_CROP_ANCHOR_CENTER
+                bool "Center (balanced)"
+
+            config CAM_CROP_ANCHOR_TOP
+                bool "Top (more far view)"
+        endchoice
+
+        config OV5647_SCCB_I2C_PORT
+            int "OV5647 SCCB/I2C port"
+            default 0
+
+        config OV5647_SCCB_SDA_GPIO
+            int "OV5647 SCCB/I2C SDA GPIO"
+            default 7
+
+        config OV5647_SCCB_SCL_GPIO
+            int "OV5647 SCCB/I2C SCL GPIO"
+            default 8
+
+        config OV5647_SCCB_FREQ_HZ
+            int "OV5647 SCCB/I2C frequency"
+            default 100000
+
+        config OV5647_RESET_GPIO
+            int "OV5647 RESET GPIO (-1 if unused)"
+            default -1
+
+        config OV5647_PWDN_GPIO
+            int "OV5647 PWDN GPIO (-1 if unused)"
+            default -1
+
+    endmenu
+
+endmenu
+
+menu "ATK-MS601M IMU (UART)"
+
+    config IMU_ATK_MS601M_ENABLE
+        bool "Enable ATK-MS601M IMU"
+        default y
+        help
+            Enable the ATK-MS601M 6-axis attitude sensor connected via UART.
+
+    config IMU_ATK_MS601M_UART_NUM
+        int "UART controller number"
+        depends on IMU_ATK_MS601M_ENABLE
+        default 1
+        range 0 4
+        help
+            ESP32-P4 UART controller to use. UART0 is the debug port, so UART1
+            (default) is recommended.
+
+    config IMU_ATK_MS601M_TX_GPIO
+        int "UART TX GPIO (P4 TX -> IMU RX)"
+        depends on IMU_ATK_MS601M_ENABLE
+        default 22
+        range 0 54
+        help
+            GPIO used for UART TX. Connect this to the RX pin of the IMU module.
+            Default GPIO22 is on the 40-pin header pin 12.
+
+    config IMU_ATK_MS601M_RX_GPIO
+        int "UART RX GPIO (P4 RX <- IMU TX)"
+        depends on IMU_ATK_MS601M_ENABLE
+        default 21
+        range 0 54
+        help
+            GPIO used for UART RX. Connect this to the TX pin of the IMU module.
+            Default GPIO21 is on the 40-pin header pin 11.
+
+    config IMU_ATK_MS601M_BAUD_RATE
+        int "UART baud rate"
+        depends on IMU_ATK_MS601M_ENABLE
+        default 115200
+        range 1200 5000000
+        help
+            Default ATK-MS601M baud rate is 115200.
+
+    config IMU_ATK_MS601M_RX_BUF_SIZE
+        int "UART RX buffer size"
+        depends on IMU_ATK_MS601M_ENABLE
+        default 512
+        range 128 4096
+
+    config IMU_ATK_MS601M_TASK_PRIORITY
+        int "UART parse task priority"
+        depends on IMU_ATK_MS601M_ENABLE
+        default 4
+        range 1 25
+
+    config IMU_ATK_MS601M_TASK_STACK
+        int "UART parse task stack size (bytes)"
+        depends on IMU_ATK_MS601M_ENABLE
+        default 4096
+        range 2048 16384
+
+endmenu
+
+menu "SD Card (Onboard TF Slot)"
+
+    config SD_CARD_ENABLE
+        bool "Enable onboard SD card"
+        default y
+        help
+            Enable the ESP32-P4-WIFI6-DEV-KIT onboard SDIO 3.0 TF card slot.
+
+    config SD_CARD_MOUNT_POINT
+        string "SD card mount point"
+        depends on SD_CARD_ENABLE
+        default "/sdcard"
+        help
+            VFS mount point for the SD card.
+
+    config SD_CARD_PHOTO_DIR
+        string "Photo save directory name"
+        depends on SD_CARD_ENABLE
+        default "photos"
+        help
+            Subdirectory under mount point where captured photos are saved.
+
+    config SD_CARD_FREQ_KHZ
+        int "SDMMC max frequency (kHz)"
+        depends on SD_CARD_ENABLE
+        default 20000
+        range 5000 40000
+        help
+            20000 = default speed, 40000 = high speed. Start with 20000 for
+            better compatibility.
+
+    config SD_CARD_GPIO_CLK
+        int "SDMMC CLK GPIO"
+        depends on SD_CARD_ENABLE
+        default 43
+        range 0 54
+
+    config SD_CARD_GPIO_CMD
+        int "SDMMC CMD GPIO"
+        depends on SD_CARD_ENABLE
+        default 44
+        range 0 54
+
+    config SD_CARD_GPIO_D0
+        int "SDMMC D0 GPIO"
+        depends on SD_CARD_ENABLE
+        default 39
+        range 0 54
+
+    config SD_CARD_GPIO_D1
+        int "SDMMC D1 GPIO"
+        depends on SD_CARD_ENABLE
+        default 40
+        range 0 54
+
+    config SD_CARD_GPIO_D2
+        int "SDMMC D2 GPIO"
+        depends on SD_CARD_ENABLE
+        default 41
+        range 0 54
+
+    config SD_CARD_GPIO_D3
+        int "SDMMC D3 GPIO"
+        depends on SD_CARD_ENABLE
+        default 42
+        range 0 54
+
+endmenu

@@ -1,0 +1,20 @@
+# PC Agent core dependencies
+# Install with: pip install -r requirements.txt
+
+# HTTP / network
+requests>=2.31.0
+zeroconf>=0.132.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Object detection / ML
+ultralytics>=8.2.0
+
+# Text-to-speech
+edge-tts>=6.1.0
+pyttsx3>=2.90
+miniaudio>=1.59
+
+# Cloud LLM (Qwen-VL via DashScope)
+dashscope>=1.20.0

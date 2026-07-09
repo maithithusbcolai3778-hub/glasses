@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>导盲眼镜监控台</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#141b24; --text:#e6edf3; --accent:#2f81f7; --red:#ff4d4f; --green:#52c41a; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    header { padding:12px 20px; background:var(--panel); border-bottom:1px solid #1f2933; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+    header h1 { margin:0; font-size:18px; }
+    main { display:grid; grid-template-columns: 1fr 320px; gap:16px; padding:16px; max-width:1400px; margin:0 auto; }
+    @media (max-width:900px){ main { grid-template-columns: 1fr; } }
+    .video-card { background:var(--panel); border-radius:10px; border:1px solid #1f2933; overflow:hidden; }
+    .video-wrap { position:relative; width:100%; aspect-ratio: 800 / 480; overflow:hidden; background:#000; }
+    .video-wrap img, .video-wrap #overlay { position:absolute; left:0; top:0; width:100%; height:100%; transform: scale(var(--zoom, 1)); transform-origin: center; transition: transform 0.1s linear; }
+    .video-wrap img { object-fit: cover; }
+    #overlay { pointer-events:none; }
+    .bbox { position:absolute; border:2px solid var(--accent); display:flex; align-items:flex-start; justify-content:flex-start; }
+    .bbox.red { border-color:var(--red); }
+    .bbox.green { border-color:var(--green); }
+    .bbox .lbl { background:rgba(0,0,0,0.65); color:#fff; font-size:11px; padding:1px 4px; border-radius:2px; white-space:nowrap; }
+    .overlay-info { position:absolute; left:10px; bottom:10px; background:rgba(0,0,0,0.55); padding:8px 12px; border-radius:6px; font-size:12px; line-height:1.5; backdrop-filter: blur(3px); }
+    .panel { background:var(--panel); border-radius:10px; border:1px solid #1f2933; padding:14px; margin-bottom:14px; }
+    .panel h2 { margin:0 0 12px; font-size:15px; font-weight:600; }
+    .control { margin-bottom:18px; }
+    .control label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px; color:#9fb3c8; }
+    input[type=range] { width:100%; }
+    .imu-grid { display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:13px; }
+    .imu-grid div { background:#0e141c; padding:8px 10px; border-radius:6px; }
+    .imu-grid span { color:#9fb3c8; display:block; font-size:11px; margin-bottom:2px; }
+    .status-box { background:#0e141c; padding:10px; border-radius:6px; font-size:13px; min-height:40px; }
+    footer { padding:10px 20px; color:#7d8b9a; font-size:12px; text-align:center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎥 导盲眼镜实时画面监控</h1>
+    <div>PC Agent Dashboard · 不影响语音播报</div>
+  </header>
+  <main>
+    <div class="video-card">
+      <div class="video-wrap" id="videoWrap" style="--zoom:1">
+        <img id="stream" src="" alt="camera stream">
+        <div id="overlay"></div>
+        <div class="overlay-info">
+          <div>Zoom: <span id="zoomVal">1.0</span>x</div>
+          <div id="fpsInfo">等待视频流...</div>
+        </div>
+      </div>
+    </div>
+    <aside>
+      <div class="panel control">
+        <h2>🔍 数字变焦</h2>
+        <label><span>1.0x</span><span>4.0x</span></label>
+        <input id="zoom" type="range" min="1" max="4" step="0.1" value="1">
+      </div>
+      <div class="panel">
+        <h2>📡 IMU / 状态</h2>
+        <div class="imu-grid" id="imu">
+          <div><span>Pitch</span><b id="pitch">-</b></div>
+          <div><span>Roll</span><b id="roll">-</b></div>
+          <div><span>Yaw</span><b id="yaw">-</b></div>
+          <div><span>转向</span><b id="turn">-</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>📢 当前指令</h2>
+        <div class="status-box" id="status">等待数据...</div>
+      </div>
+    </aside>
+  </main>
+  <footer>画面直接来自 ESP32 /stream；识别框由 PC Agent 每 500ms 刷新一次。</footer>
+  <script>
+    const $ = id => document.getElementById(id);
+    const clsColor = { red_light:'red', green_light:'green' };
+    const videoWrap = $('videoWrap');
+    const streamImg = $('stream');
+    let lastFrameTime = 0;
+
+    $('zoom').addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      videoWrap.style.setProperty('--zoom', v);
+      $('zoomVal').textContent = v.toFixed(1);
+      fetch('/set_zoom?factor='+v).catch(()=>{});
+    });
+
+    streamImg.onload = () => {
+      const now = performance.now();
+      if (lastFrameTime) {
+        const fps = 1000 / (now - lastFrameTime);
+        $('fpsInfo').textContent = '约 ' + fps.toFixed(1) + ' fps';
+      }
+      lastFrameTime = now;
+    };
+    streamImg.onerror = () => {
+      $('fpsInfo').textContent = '视频流中断，3秒后重连';
+      setTimeout(() => { if (streamImg._src) streamImg.src = streamImg._src; }, 3000);
+    };
+
+    function renderBoxes(detections){
+      const ov = $('overlay');
+      ov.innerHTML = '';
+      if (!detections) return;
+      detections.forEach(d => {
+        if (!d.bbox) return;
+        const [x1,y1,x2,y2] = d.bbox;
+        const el = document.createElement('div');
+        el.className = 'bbox ' + (clsColor[d.cls] || '');
+        el.style.left = (x1*100) + '%';
+        el.style.top = (y1*100) + '%';
+        el.style.width = ((x2-x1)*100) + '%';
+        el.style.height = ((y2-y1)*100) + '%';
+        const lbl = document.createElement('div');
+        lbl.className = 'lbl';
+        lbl.textContent = (d.cls_zh || d.cls) + ' ' + Math.round(d.conf*100) + '%';
+        el.appendChild(lbl);
+        ov.appendChild(el);
+      });
+    }
+
+    async function pollState(){
+      try{
+        const data = await fetch('/state').then(r=>r.json());
+        const zoom = data.zoom || 1;
+        videoWrap.style.setProperty('--zoom', zoom);
+        $('zoom').value = zoom;
+        $('zoomVal').textContent = zoom.toFixed(1);
+        $('status').textContent = data.status_text || '无当前指令';
+        const imu = data.imu || {};
+        const att = imu.attitude || {};
+        $('pitch').textContent = (att.pitch != null ? att.pitch.toFixed(1) : '-') + '°';
+        $('roll').textContent = (att.roll != null ? att.roll.toFixed(1) : '-') + '°';
+        $('yaw').textContent = (att.yaw != null ? att.yaw.toFixed(1) : '-') + '°';
+        const turn = imu.turn || {};
+        $('turn').textContent = turn.dir && turn.dir !== 'none' ? `${turn.dir} ${(turn.last_completed_deg||0).toFixed(0)}°` : '-';
+        renderBoxes(data.detections);
+        if (data.esp32_host && (!streamImg._src || streamImg._src.indexOf(data.esp32_host) === -1)) {
+          streamImg._src = 'http://' + data.esp32_host + '/stream?t=' + Date.now();
+          streamImg.src = streamImg._src;
+        }
+      } catch(e){ console.warn('state poll failed', e); }
+    }
+    setInterval(pollState, 500);
+    pollState();
+  </script>
+</body>
+</html>

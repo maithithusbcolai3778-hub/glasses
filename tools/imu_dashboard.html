@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IMU 实时监测</title>
+<style>
+body { margin: 0; background: #0b0f14; color: #e8f0f8; font-family: Arial, sans-serif; }
+header { padding: 12px 16px; background: #151b23; border-bottom: 1px solid #26313d; }
+h1 { margin: 0; font-size: 18px; }
+main { padding: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 640px; margin: 0 auto; }
+.card { background: #151b23; border-radius: 10px; padding: 14px; text-align: center; border: 1px solid #26313d; }
+.value { font-size: 32px; font-weight: bold; color: #4fc3f7; }
+.label { font-size: 12px; color: #8fa4b8; margin-top: 4px; }
+#turn { grid-column: 1 / -1; }
+#turn-state { font-size: 22px; font-weight: bold; margin: 6px 0; min-height: 30px; }
+.arrow { width: 80px; height: 80px; margin: 8px auto; transition: transform 0.05s linear; }
+.arrow svg { fill: #4fc3f7; }
+#chart { grid-column: 1 / -1; width: 100%; height: 180px; background: #0f141a; border-radius: 10px; border: 1px solid #26313d; }
+#ctrl { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+button { background: #26313d; color: #e8f0f8; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+button.active { background: #4fc3f7; color: #000; }
+</style>
+</head>
+<body>
+<header><h1>IMU 实时监测</h1></header>
+<main>
+<div class="card"><div class="value" id="roll">--</div><div class="label">Roll (°)</div></div>
+<div class="card"><div class="value" id="pitch">--</div><div class="label">Pitch (°)</div></div>
+<div class="card"><div class="value" id="yaw">--</div><div class="label">Yaw (°)</div></div>
+<div class="card" id="turn">
+  <div class="label">转向状态</div>
+  <div id="turn-state">等待数据...</div>
+  <div class="arrow" id="arrow"><svg viewBox="0 0 100 100"><polygon points="50,10 80,80 50,65 20,80"/></svg></div>
+  <div class="label">完成次数: <span id="turn-count">0</span> | 上次角度: <span id="turn-last">0</span>°</div>
+</div>
+<canvas id="chart"></canvas>
+<div id="ctrl">
+  <span class="label">轮询间隔:</span>
+  <button data-ms="50">50ms</button>
+  <button data-ms="100" class="active">100ms</button>
+  <button data-ms="200">200ms</button>
+</div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const rollEl = $('roll'), pitchEl = $('pitch'), yawEl = $('yaw'), stateEl = $('turn-state');
+const arrowEl = $('arrow'), countEl = $('turn-count'), lastEl = $('turn-last');
+const canvas = $('chart'), ctx = canvas.getContext('2d');
+let interval = 100, history = [], maxPoints = 120, lastYaw = null, unwrap = 0;
+function resize() {
+  canvas.width = canvas.clientWidth * window.devicePixelRatio;
+  canvas.height = canvas.clientHeight * window.devicePixelRatio;
+  ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+}
+window.addEventListener('resize', resize); resize();
+document.querySelectorAll('#ctrl button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#ctrl button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); interval = +b.dataset.ms;
+});
+function update(d) {
+  const a = d.attitude, t = d.turn || {};
+  rollEl.textContent = a.roll.toFixed(1);
+  pitchEl.textContent = a.pitch.toFixed(1);
+  yawEl.textContent = a.yaw.toFixed(1);
+  let txt = t.state || 'idle';
+  if (t.in_progress) txt = '转向中: ' + (t.dir || '');
+  stateEl.textContent = txt;
+  countEl.textContent = t.completed_count || 0;
+  lastEl.textContent = (t.last_completed_deg || 0).toFixed(1);
+  let y = a.yaw;
+  if (lastYaw !== null) {
+    let dy = y - lastYaw;
+    while (dy > 180) dy -= 360;
+    while (dy < -180) dy += 360;
+    unwrap += dy;
+  } else { unwrap = y; }
+  lastYaw = y;
+  arrowEl.style.transform = 'rotate(' + y + 'deg)';
+  history.push(unwrap);
+  if (history.length > maxPoints) history.shift();
+  draw();
+}
+function draw() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  if (history.length < 2) return;
+  let min = Math.min(...history), max = Math.max(...history);
+  if (max - min < 20) { let c = (max + min) / 2; min = c - 10; max = c + 10; }
+  ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2; ctx.beginPath();
+  history.forEach((v, i) => {
+    const x = i / (maxPoints - 1) * w;
+    const y = h - ((v - min) / (max - min)) * h * 0.8 - h * 0.1;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.fillStyle = '#8fa4b8'; ctx.font = '12px Arial';
+  ctx.fillText(min.toFixed(1) + '°', 4, h - 4);
+  ctx.fillText(max.toFixed(1) + '°', 4, 12);
+}
+async function poll() {
+  try {
+    const r = await fetch('/imu?t=' + Date.now(), { cache: 'no-store' });
+    const d = await r.json();
+    if (!d.error) update(d);
+  } catch (e) { stateEl.textContent = '连接失败'; }
+  setTimeout(poll, interval);
+}
+poll();
+</script>
+</body>
+</html>
