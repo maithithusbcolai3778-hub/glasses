@@ -42,6 +42,7 @@
     <div id="top-controls">
       <input id="esp-ip" type="text" placeholder="ESP32 IP" value="192.168.198.181">
       <button onclick="connect()">连接</button>
+      <button onclick="toggleMode()" id="mode-btn">MJPEG</button>
     </div>
   </header>
 
@@ -95,6 +96,8 @@
     const conn = $('conn');
     let lastFrameTime = 0;
     let reconnectTimer = null;
+    let snapshotInterval = null;
+    let mode = 'mjpeg'; // 'mjpeg' or 'snapshot'
 
     $('zoom').addEventListener('input', e => {
       const v = parseFloat(e.target.value);
@@ -128,10 +131,39 @@
       let ip = $('esp-ip').value.trim();
       if (!ip) return;
       if (!ip.startsWith('http')) ip = 'http://' + ip;
-      const url = ip.replace(/\/$/, '') + '/stream?t=' + Date.now();
+      const base = ip.replace(/\/$/, '');
+      if (mode === 'mjpeg') {
+        connectMjpeg(base);
+      } else {
+        connectSnapshot(base);
+      }
+    }
+
+    function connectMjpeg(base) {
+      const url = base + '/stream?t=' + Date.now();
       streamImg._src = url;
       streamImg.src = url;
-      fpsInfo.textContent = '正在连接 ' + ip + ' ...';
+      fpsInfo.textContent = '正在连接 MJPEG 流...';
+    }
+
+    function connectSnapshot(base) {
+      if (snapshotInterval) clearInterval(snapshotInterval);
+      const url = base + '/snapshot.jpg';
+      streamImg._src = url;
+      function fetchFrame() {
+        streamImg.src = url + '?t=' + Date.now();
+      }
+      fetchFrame();
+      snapshotInterval = setInterval(fetchFrame, 200); // 5 FPS
+      fpsInfo.textContent = '正在连接快照轮询...';
+    }
+
+    function toggleMode() {
+      mode = mode === 'mjpeg' ? 'snapshot' : 'mjpeg';
+      $('mode-btn').textContent = mode === 'mjpeg' ? 'MJPEG' : '轮询';
+      if (snapshotInterval) clearInterval(snapshotInterval);
+      streamImg.src = '';
+      fpsInfo.textContent = '模式已切换，请重新连接';
     }
 
     function snapshot() {
