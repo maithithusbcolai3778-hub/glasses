@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>导盲眼镜监控台 · 独立版</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#141b24; --text:#e6edf3; --accent:#2f81f7; --red:#ff4d4f; --green:#52c41a; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; overflow: hidden; }
+    header { padding: 12px 20px; background: var(--panel); border-bottom: 1px solid #1f2933; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+    header h1 { margin: 0; font-size: 18px; }
+    #top-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    #top-controls input { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 6px 10px; font-size: 14px; width: 160px; }
+    #top-controls button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 14px; cursor: pointer; }
+    #top-controls button:active { opacity: 0.8; }
+    main { display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; height: calc(100vh - 60px); }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+    .video-card { background: var(--panel); border-radius: 10px; border: 1px solid #1f2933; overflow: hidden; }
+    .video-wrap { position: relative; width: 100%; aspect-ratio: 800 / 480; overflow: hidden; background: #000; }
+    .video-wrap img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--zoom, 1)); transform-origin: center; transition: transform 0.1s linear; }
+    .overlay-info { position: absolute; left: 10px; bottom: 10px; background: rgba(0,0,0,0.55); padding: 8px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; backdrop-filter: blur(3px); }
+    .panel { background: var(--panel); border-radius: 10px; border: 1px solid #1f2933; padding: 14px; margin-bottom: 14px; }
+    .panel h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+    .control { margin-bottom: 18px; }
+    .control label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #9fb3c8; }
+    input[type=range] { width: 100%; }
+    .imu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; }
+    .imu-grid div { background: #0e141c; padding: 8px 10px; border-radius: 6px; }
+    .imu-grid span { color: #9fb3c8; display: block; font-size: 11px; margin-bottom: 2px; }
+    .status-box { background: #0e141c; padding: 10px; border-radius: 6px; font-size: 13px; min-height: 40px; }
+    footer { padding: 10px 20px; color: #7d8b9a; font-size: 12px; text-align: center; }
+    .snapshot-bar { display: flex; justify-content: center; margin-top: 12px; }
+    .snapshot-btn { width: 60px; height: 60px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.3); cursor: pointer; }
+    .snapshot-btn:active { background: #fff; }
+    #flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; opacity: 0; pointer-events: none; z-index: 100; transition: opacity 0.1s; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎥 导盲眼镜实时画面监控</h1>
+    <div id="top-controls">
+      <input id="esp-ip" type="text" placeholder="ESP32 IP" value="192.168.198.181">
+      <button onclick="connect()">连接</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="video-card">
+      <div class="video-wrap" id="videoWrap" style="--zoom:1">
+        <img id="stream" src="" alt="camera stream">
+        <div class="overlay-info">
+          <div>Zoom: <span id="zoomVal">1.0</span>x</div>
+          <div id="fpsInfo">等待视频流...</div>
+        </div>
+      </div>
+      <div class="snapshot-bar">
+        <button class="snapshot-btn" onclick="snapshot()" title="保存当前画面"></button>
+      </div>
+    </div>
+
+    <aside>
+      <div class="panel control">
+        <h2>🔍 数字变焦</h2>
+        <label><span>1.0x</span><span>4.0x</span></label>
+        <input id="zoom" type="range" min="1" max="4" step="0.1" value="1">
+      </div>
+      <div class="panel">
+        <h2>📡 IMU / 状态</h2>
+        <div class="imu-grid" id="imu">
+          <div><span>Pitch</span><b>-</b></div>
+          <div><span>Roll</span><b>-</b></div>
+          <div><span>Yaw</span><b>-</b></div>
+          <div><span>连接</span><b id="conn">未连接</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>📢 说明</h2>
+        <div class="status-box">
+          独立监控模式：画面直接来自 ESP32，无需 PC Agent。<br>
+          识别框、IMU 数据需要启动 PC Agent 后才可显示。
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>独立监控版 · 画面直连 ESP32 /stream</footer>
+  <div id="flash"></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const videoWrap = $('videoWrap');
+    const streamImg = $('stream');
+    const fpsInfo = $('fpsInfo');
+    const conn = $('conn');
+    let lastFrameTime = 0;
+    let reconnectTimer = null;
+
+    $('zoom').addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      videoWrap.style.setProperty('--zoom', v);
+      $('zoomVal').textContent = v.toFixed(1);
+    });
+
+    streamImg.onload = () => {
+      const now = performance.now();
+      if (lastFrameTime) {
+        const fps = 1000 / (now - lastFrameTime);
+        fpsInfo.textContent = '约 ' + fps.toFixed(1) + ' fps';
+      }
+      lastFrameTime = now;
+      conn.textContent = '已连接';
+      conn.style.color = 'var(--green)';
+      clearTimeout(reconnectTimer);
+    };
+
+    streamImg.onerror = () => {
+      fpsInfo.textContent = '视频流中断，3秒后重连';
+      conn.textContent = '断开';
+      conn.style.color = 'var(--red)';
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        if (streamImg._src) streamImg.src = streamImg._src;
+      }, 3000);
+    };
+
+    function connect() {
+      let ip = $('esp-ip').value.trim();
+      if (!ip) return;
+      if (!ip.startsWith('http')) ip = 'http://' + ip;
+      const url = ip.replace(/\/$/, '') + '/stream?t=' + Date.now();
+      streamImg._src = url;
+      streamImg.src = url;
+      fpsInfo.textContent = '正在连接 ' + ip + ' ...';
+    }
+
+    function snapshot() {
+      if (!streamImg.src || streamImg.src === window.location.href) return;
+      const a = document.createElement('a');
+      a.href = streamImg.src;
+      a.download = 'snapshot_' + Date.now() + '.jpg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      $('flash').style.opacity = '0.6';
+      setTimeout(() => $('flash').style.opacity = '0', 100);
+    }
+  </script>
+</body>
+</html>

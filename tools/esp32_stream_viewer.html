@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>导盲眼镜摄像头监控</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: #111;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+  #stream-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #000;
+  }
+  #stream-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  #top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.7);
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  #top-bar input {
+    flex: 1;
+    min-width: 120px;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 14px;
+    outline: none;
+  }
+  #top-bar button {
+    background: #007aff;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #top-bar button:active {
+    opacity: 0.8;
+  }
+  #status {
+    width: 100%;
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 4px;
+  }
+  #snapshot-btn {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    border: 4px solid #fff;
+    background: rgba(255,255,255,0.3);
+    cursor: pointer;
+    display: none;
+  }
+  #snapshot-btn:active {
+    background: #fff;
+  }
+  #flash {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 20;
+    transition: opacity 0.1s;
+  }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <input id="esp-ip" type="text" placeholder="ESP32 IP，如 192.168.198.181" value="192.168.198.181">
+  <button onclick="connect()">连接</button>
+  <button onclick="toggleMode()" id="mode-btn">MJPEG</button>
+  <div id="status">请输入 ESP32 IP 后点击连接</div>
+</div>
+
+<div id="stream-container">
+  <img id="stream-img" src="" alt="摄像头画面">
+</div>
+
+<button id="snapshot-btn" onclick="snapshot()"></button>
+<div id="flash"></div>
+
+<script>
+  const img = document.getElementById('stream-img');
+  const ipInput = document.getElementById('esp-ip');
+  const statusDiv = document.getElementById('status');
+  const snapshotBtn = document.getElementById('snapshot-btn');
+  const modeBtn = document.getElementById('mode-btn');
+  const flash = document.getElementById('flash');
+
+  let mode = 'mjpeg'; // 'mjpeg' 或 'snapshot'
+  let snapshotInterval = null;
+  let reconnectTimer = null;
+
+  function getBaseUrl() {
+    let ip = ipInput.value.trim();
+    if (!ip) return null;
+    if (ip.startsWith('http://')) return ip.replace(/\/$/, '');
+    if (ip.startsWith('https://')) return ip.replace(/\/$/, '');
+    return 'http://' + ip;
+  }
+
+  function connect() {
+    const base = getBaseUrl();
+    if (!base) {
+      statusDiv.textContent = '请输入 ESP32 IP';
+      return;
+    }
+
+    if (mode === 'mjpeg') {
+      connectMjpeg(base);
+    } else {
+      connectSnapshot(base);
+    }
+  }
+
+  function connectMjpeg(base) {
+    const url = base + '/stream';
+    statusDiv.textContent = '正在连接 ' + url + ' ...';
+    img.src = url;
+    snapshotBtn.style.display = 'block';
+
+    img.onload = () => {
+      statusDiv.textContent = '已连接：' + url;
+      clearTimeout(reconnectTimer);
+    };
+
+    img.onerror = () => {
+      statusDiv.textContent = '连接失败，3秒后重试...';
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => connectMjpeg(base), 3000);
+    };
+  }
+
+  function connectSnapshot(base) {
+    const url = base + '/snapshot.jpg';
+    statusDiv.textContent = '正在连接 ' + url + ' ...';
+    snapshotBtn.style.display = 'block';
+
+    if (snapshotInterval) clearInterval(snapshotInterval);
+
+    function fetchFrame() {
+      img.src = url + '?t=' + Date.now();
+    }
+
+    img.onload = () => {
+      statusDiv.textContent = '已连接：' + url;
+    };
+
+    img.onerror = () => {
+      statusDiv.textContent = '连接失败，3秒后重试...';
+    };
+
+    fetchFrame();
+    snapshotInterval = setInterval(fetchFrame, 200); // 5 FPS
+  }
+
+  function toggleMode() {
+    mode = mode === 'mjpeg' ? 'snapshot' : 'mjpeg';
+    modeBtn.textContent = mode === 'mjpeg' ? 'MJPEG' : '轮询';
+    img.src = '';
+    if (snapshotInterval) clearInterval(snapshotInterval);
+    statusDiv.textContent = '模式已切换，请重新点击连接';
+  }
+
+  function snapshot() {
+    if (!img.src || img.src === window.location.href) return;
+
+    const a = document.createElement('a');
+    a.href = img.src;
+    a.download = 'snapshot_' + Date.now() + '.jpg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    flash.style.opacity = '0.6';
+    setTimeout(() => flash.style.opacity = '0', 100);
+  }
+</script>
+
+</body>
+</html>
